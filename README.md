@@ -277,7 +277,7 @@ Git Clone → Build → Test → Docker Build → Push Registry → Deploy → H
 
 ```bash
 # 1. 克隆项目
-git clone <项目地址>
+git clone https://github.com/MSDOS-Signal/DxCloud.git
 cd dxcloud
 
 # 2. 配置环境变量
