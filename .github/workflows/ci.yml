@@ -52,5 +52,5 @@ jobs:
 
       - name: 国内源启动参数冒烟
         run: |
-          docker compose config -f docker-compose.yml >/dev/null
-          docker compose --env-file .env.example config -f docker-compose.prod.yml >/dev/null
+          docker compose -f docker-compose.yml config >/dev/null
+          docker compose -f docker-compose.prod.yml --env-file .env.example config >/dev/null
