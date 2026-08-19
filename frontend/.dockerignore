@@ -1,0 +1,8 @@
+node_modules/
+.nuxt/
+.output/
+test-results/
+playwright-report/
+.git
+Dockerfile
+Dockerfile.dev

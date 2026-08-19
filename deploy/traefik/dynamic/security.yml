@@ -1,0 +1,11 @@
+# Traefik 动态配置占位（file provider；追加中间件/白名单时放本目录，watch 自动生效）
+http:
+  middlewares:
+    security-headers:
+      headers:
+        browserXssFilter: true
+        contentTypeNosniff: true
+        frameDeny: true
+        referrerPolicy: "same-origin"
+        customResponseHeaders:
+          X-Content-Type-Options: "nosniff"

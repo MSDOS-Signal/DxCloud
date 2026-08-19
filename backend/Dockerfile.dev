@@ -1,0 +1,12 @@
+# Dockerfile.dev：开发容器（保留 Go 工具链，源码以卷挂载）
+# 改代码后：docker compose restart backend（重启即重编译）
+# 注：golang:alpine 基础镜像已内置 git 与 ca-certificates，只需补 tzdata
+ARG GO_BUILD_IMAGE=golang:1.25-alpine
+FROM ${GO_BUILD_IMAGE}
+RUN apk add --no-cache tzdata
+ENV GOPROXY=https://goproxy.cn,direct \
+    CGO_ENABLED=0 \
+    TZ=Asia/Shanghai
+WORKDIR /app
+# go build && exec：二进制作为 PID 1 直接接收 SIGTERM，保证优雅停机
+CMD ["sh", "-c", "go build -o /tmp/cloud-api ./cmd/server && exec /tmp/cloud-api"]

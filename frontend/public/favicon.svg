@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="dx-fav-main" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#64d9ff"/>
+      <stop offset="45%" stop-color="#1f7bff"/>
+      <stop offset="100%" stop-color="#0052d9"/>
+    </linearGradient>
+    <linearGradient id="dx-fav-accent" x1="18" y1="14" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#bdeaff"/>
+    </linearGradient>
+  </defs>
+  <rect x="10" y="10" width="44" height="44" rx="14" fill="url(#dx-fav-main)"/>
+  <path d="M18 35.5c0-7.46 6.04-13.5 13.5-13.5 3.77 0 7.18 1.54 9.63 4.02A11.46 11.46 0 0 1 49 37.5c0 6.35-5.15 11.5-11.5 11.5H28A10 10 0 0 1 18 39z" fill="url(#dx-fav-accent)" opacity=".94"/>
+  <path d="M22 36.5c1.7-5.95 7.2-10.3 13.66-10.3 2.38 0 4.63.59 6.6 1.63" stroke="#fff" stroke-width="3.2" stroke-linecap="round" fill="none"/>
+  <path d="M22 42h20.5c3.04 0 5.5-2.46 5.5-5.5 0-2.52-1.7-4.64-4.01-5.29" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <circle cx="46.5" cy="23.5" r="3.2" fill="#9be7ff"/>
+</svg>

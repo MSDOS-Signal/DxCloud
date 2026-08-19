@@ -1,0 +1,45 @@
+# Traefik 静态配置（生产版：HTTP→HTTPS 强制跳转 + 默认自签名证书）
+# 证书：deploy/certs/tls.crt + tls.key（tools/gencert.go 生成；正式环境替换为受信证书）
+log:
+  level: WARN
+
+api:
+  insecure: false
+  dashboard: false
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+  websecure:
+    address: ":443"
+
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    # 显式指定路由网络：compose 项目名 dxcloud + edge 网络 → 完整名 dxcloud_edge
+    network: dxcloud_edge
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+
+tls:
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /etc/traefik/certs/tls.crt
+        keyFile: /etc/traefik/certs/tls.key
+  # 正式域名启用 ACME（Let's Encrypt）时取消注释并配置邮箱：
+  # certificatesResolvers:
+  #   letsencrypt:
+  #     acme:
+  #       email: ops@example.com
+  #       storage: /letsencrypt/acme.json
+  #       httpChallenge:
+  #         entryPoint: web

@@ -1,0 +1,19 @@
+# Traefik 静态配置（开发版：开启 Dashboard）
+log:
+  level: INFO
+
+api:
+  insecure: true
+  dashboard: true
+
+entryPoints:
+  web:
+    address: ":80"
+
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    # 显式指定路由网络：compose 项目名 dxcloud + edge 网络 → 完整名 dxcloud_edge
+    # （不指定时 Traefik 会取容器第一个网络，多网络容器可能解析到它不可达的网段）
+    network: dxcloud_edge

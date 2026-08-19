@@ -1,0 +1,63 @@
+name: springboot-ci-cd
+timeout: 2h
+env:
+  MAVEN_OPTS: "-Xmx1024m"
+
+steps:
+  - name: fetch-code
+    type: git
+    url: https://github.com/<你的用户名>/<你的仓库>.git
+    branch: main
+
+  - name: maven-package
+    type: shell
+    timeout: 30m
+    script: |
+      set -e
+      apk add --no-cache openjdk17 maven
+      export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+      export PATH="$JAVA_HOME/bin:$PATH"
+      mkdir -p ~/.m2
+      cat > ~/.m2/settings.xml <<'EOF'
+      <settings>
+        <mirrors>
+          <mirror>
+            <id>aliyunmaven</id>
+            <mirrorOf>central</mirrorOf>
+            <url>https://maven.aliyun.com/repository/public</url>
+          </mirror>
+        </mirrors>
+      </settings>
+      EOF
+      mvn -B -DskipTests package
+      ls -l target/
+
+  - name: build-image
+    type: docker-build
+    dockerfile: Dockerfile
+    tags:
+      - host.docker.internal:15000/default/spring-demo:latest
+
+  - name: push-image
+    type: docker-push
+    tags:
+      - host.docker.internal:15000/default/spring-demo:latest
+
+  - name: deploy
+    type: docker-deploy
+    application: spring-demo
+    image: host.docker.internal:15000/default/spring-demo:latest
+
+  - name: health
+    type: shell
+    timeout: 5m
+    script: |
+      set -e
+      apk add --no-cache curl
+      for i in $(seq 1 30); do
+        code=$(curl -s -o /dev/null -w '%{http_code}' http://spring-demo.localhost/actuator/health || true)
+        echo "try $i -> $code"
+        [ "$code" = "200" ] && exit 0
+        sleep 5
+      done
+      echo "health check failed" && exit 1

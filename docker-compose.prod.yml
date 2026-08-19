@@ -1,0 +1,219 @@
+# ============================================================
+# docker-compose.prod.yml —— 生产环境（多阶段构建产物，无源码挂载，非 root，HTTPS）
+# 用法：
+#   1) 首次：docker run --rm -v ${PWD}:/src -v ${PWD}/deploy/certs:/out -w /src golang:1.25-alpine go run tools/gencert.go
+#   2) docker compose -f docker-compose.prod.yml up -d --build
+# ============================================================
+name: dxcloud
+
+services:
+  mysql:
+    image: ${MYSQL_IMAGE:-mysql:8.0}
+    container_name: dx-mysql
+    restart: always
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --skip-log-bin
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请在 .env 中设置}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-dxcloud}
+      MYSQL_USER: ${MYSQL_USER:-dxcloud}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?请在 .env 中设置}
+      TZ: Asia/Shanghai
+    volumes:
+      - mysql-data:/var/lib/mysql
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    networks: [infra]
+
+  redis:
+    image: ${REDIS_IMAGE:-redis:7-alpine}
+    container_name: dx-redis
+    restart: always
+    command: ["sh", "-c", "redis-server --requirepass \"$$REDIS_PASSWORD\" --appendonly yes"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?请在 .env 中设置}
+      TZ: Asia/Shanghai
+    volumes:
+      - redis-data:/data
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    networks: [infra]
+
+  registry:
+    image: ${REGISTRY_IMAGE:-registry:2.8}
+    container_name: dx-registry
+    restart: always
+    environment:
+      REGISTRY_STORAGE_DELETE_ENABLED: "true"
+      TZ: Asia/Shanghai
+    volumes:
+      - registry-data:/var/lib/registry
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+    ports:
+      - "127.0.0.1:${REGISTRY_EXPOSE_PORT:-15000}:5000"
+    networks: [infra]
+
+  backend:
+    build:
+      context: ./backend
+      args:
+        GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
+        GO_BUILD_IMAGE: ${GO_BUILD_IMAGE:-golang:1.25-alpine}
+        ALPINE_RUNTIME_IMAGE: ${ALPINE_RUNTIME_IMAGE:-alpine:3.20}
+    image: dxcloud-backend-prod:latest
+    container_name: cloud-api
+    restart: always
+    environment:
+      APP_ENV: production
+      APP_PORT: "8080"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-dxcloud}
+      MYSQL_USER: ${MYSQL_USER:-dxcloud}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?请在 .env 中设置}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?请在 .env 中设置}
+      JWT_SECRET: ${JWT_SECRET:?请在 .env 中设置}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-168h}
+      DOCKER_HOST: ${DOCKER_HOST:-unix:///var/run/docker.sock}
+      REGISTRY_URL: ${REGISTRY_URL:-registry:5000}
+      REGISTRY_ENGINE_URL: ${REGISTRY_ENGINE_URL:-127.0.0.1:15000}
+      APP_NETWORK: ${APP_NETWORK:-dxcloud_edge}
+      # 自定义 seccomp profile 名（需已加载进 docker daemon；空 = 守护进程默认 profile）
+      SECCOMP_PROFILE: ${SECCOMP_PROFILE:-}
+      TZ: Asia/Shanghai
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    # 非 root 运行 + 以宿主 docker 组 GID 访问 socket（Docker Desktop 为 root:root→0；
+    # Linux 生产设置为宿主 docker 组 GID，如 getent group docker | cut -d: -f3）
+    user: "10001:10001"
+    group_add:
+      - "${DOCKER_GROUP_GID:-0}"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    networks: [infra, edge]
+    labels:
+      - "traefik.enable=true"
+      # HTTP：跳转 HTTPS（websecure 入口）
+      - "traefik.http.routers.api.rule=PathPrefix(`/api`)"
+      - "traefik.http.routers.api.entrypoints=websecure"
+      - "traefik.http.routers.api.tls=true"
+      - "traefik.http.routers.api.priority=20"
+      - "traefik.http.routers.api.service=api"
+      - "traefik.http.routers.api.middlewares=security-headers@file"
+      - "traefik.http.services.api.loadbalancer.server.port=8080"
+      - "traefik.http.routers.healthz.rule=PathPrefix(`/healthz`)"
+      - "traefik.http.routers.healthz.entrypoints=websecure"
+      - "traefik.http.routers.healthz.tls=true"
+      - "traefik.http.routers.healthz.priority=20"
+      - "traefik.http.routers.healthz.service=api"
+      - "traefik.http.routers.ws.rule=PathPrefix(`/ws`)"
+      - "traefik.http.routers.ws.entrypoints=websecure"
+      - "traefik.http.routers.ws.tls=true"
+      - "traefik.http.routers.ws.priority=20"
+      - "traefik.http.routers.ws.service=api"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:20-alpine}
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
+    image: dxcloud-frontend-prod:latest
+    container_name: cloud-web
+    restart: always
+    environment:
+      TZ: Asia/Shanghai
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/ || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 30
+      start_period: 20s
+    networks: [edge]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.web.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.web.entrypoints=websecure"
+      - "traefik.http.routers.web.tls=true"
+      - "traefik.http.routers.web.priority=10"
+      - "traefik.http.routers.web.service=web"
+      - "traefik.http.routers.web.middlewares=security-headers@file"
+      - "traefik.http.services.web.loadbalancer.server.port=3000"
+
+  traefik:
+    image: ${TRAEFIK_IMAGE:-traefik:v3}
+    container_name: cloud-proxy
+    restart: always
+    ports:
+      - "${TRAEFIK_HTTP_PORT:-80}:80"
+      - "${TRAEFIK_HTTPS_PORT:-443}:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./deploy/traefik/traefik.prod.yml:/etc/traefik/traefik.yml:ro
+      - ./deploy/traefik/dynamic:/etc/traefik/dynamic:ro
+      - ./deploy/certs:/etc/traefik/certs:ro
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+    networks: [edge]
+
+networks:
+  edge: {}
+  infra: {}
+
+volumes:
+  mysql-data: {}
+  redis-data: {}
+  registry-data: {}

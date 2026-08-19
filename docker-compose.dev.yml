@@ -1,0 +1,79 @@
+# ============================================================
+# docker-compose.dev.yml —— 仅基础设施（本机直跑前后端时使用）
+# 用法：docker compose -f docker-compose.dev.yml up -d
+# 然后在 Windows 本机：
+#   backend:  cd backend && go run ./cmd/server
+#             （.env 或环境变量: MYSQL_HOST=127.0.0.1 MYSQL_PORT=13306 MYSQL_USER=dxcloud
+#              MYSQL_PASSWORD=dxcloud_dev_pass REDIS_HOST=127.0.0.1 REDIS_PORT=16379
+#              REDIS_PASSWORD=dxcloud_redis_dev DOCKER_HOST=npipe:////./pipe/docker_engine）
+#   frontend: cd frontend && npm install && npm run dev
+#             （NUXT_API_PROXY_TARGET=http://127.0.0.1:8080，访问 http://localhost:3000）
+# ============================================================
+name: dxcloud
+
+services:
+  mysql:
+    image: ${MYSQL_IMAGE:-mysql:8.0}
+    container_name: dx-mysql
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-dxcloud_root_dev}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-dxcloud}
+      MYSQL_USER: ${MYSQL_USER:-dxcloud}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-dxcloud_dev_pass}
+      TZ: Asia/Shanghai
+    volumes:
+      - mysql-data:/var/lib/mysql
+    ports:
+      - "${MYSQL_EXPOSE_PORT:-13306}:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    networks: [infra]
+
+  redis:
+    image: ${REDIS_IMAGE:-redis:7-alpine}
+    container_name: dx-redis
+    restart: unless-stopped
+    command: ["sh", "-c", "redis-server --requirepass \"$$REDIS_PASSWORD\" --appendonly yes"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-dxcloud_redis_dev}
+      TZ: Asia/Shanghai
+    volumes:
+      - redis-data:/data
+    ports:
+      - "${REDIS_EXPOSE_PORT:-16379}:6379"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    networks: [infra]
+
+  registry:
+    image: ${REGISTRY_IMAGE:-registry:2.8}
+    container_name: dx-registry
+    restart: unless-stopped
+    environment:
+      REGISTRY_STORAGE_DELETE_ENABLED: "true"
+      TZ: Asia/Shanghai
+    volumes:
+      - registry-data:/var/lib/registry
+    ports:
+      - "${REGISTRY_EXPOSE_PORT:-15000}:5000"
+    networks: [infra]
+
+networks:
+  infra: {}
+
+volumes:
+  mysql-data: {}
+  redis-data: {}
+  registry-data: {}

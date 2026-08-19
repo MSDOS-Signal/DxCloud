@@ -1,0 +1,10 @@
+# Dockerfile.dev：开发容器（源码卷挂载 + nuxt dev 热更新）
+ARG NODE_IMAGE=node:20-alpine
+FROM ${NODE_IMAGE}
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+RUN npm config set registry ${NPM_REGISTRY}
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
+EXPOSE 3000
+CMD ["sh", "-c", "npm run dev -- --host 0.0.0.0"]
